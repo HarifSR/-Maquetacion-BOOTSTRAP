@@ -50,21 +50,19 @@
   <div class="col-sm-3 mb-4">
   <div class="card mb-3" style="border: 2px solid #0A2A43;">
     <div class="card-body">
-      <h5 class="card-title fw-bold" style="color: #0A2A43;">CATEGORIAS</h5>
-      <ul class="list-unstyled">
-        <li><a href="#" class="text-decoration-none">Laptops 💻</a></li>
-        <li><a href="#" class="text-decoration-none">Auriculares 🎧</a></li>
-        <li><a href="#" class="text-decoration-none">Teclados ⌨️</a></li>
-        <li><a href="#" class="text-decoration-none">Componentes 🔧</a></li>
+      <h5 class="card-title fw-bold" style="color: #0A2A43;">CATEGORÍAS</h5>
+
+      
+      <ul id="categorias" class="list-unstyled m-0 p-0">
+        
       </ul>
     </div>
   </div>
 
   <div class="text-center">
-    <img src="img/logo2.png" alt="Café Infinito" class="img-fluid" style="max-width: 100%; height: auto;">
+    <img src="img/logo2.png" alt="Wild Electronics" class="img-fluid" style="max-width: 100%; height: auto;">
   </div>
 </div>
-
       
       <div class="col-sm-9">
         <div class="row g-4" id="contenedorProductos"></div>
@@ -81,58 +79,159 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-  const url = "https://backcvbgtmdesa.azurewebsites.net/api/productos";
+  const URL_PRODUCTOS = "https://backcvbgtmdesa.azurewebsites.net/api/productos";
+  const URL_CATEGORIAS = "https://backcvbgtmdesa.azurewebsites.net/api/categorias";
+
   const contenedor = document.getElementById("contenedorProductos");
   const contadorCarrito = document.querySelector(".badge");
+  const listaCategorias = document.getElementById("categorias");
+
   let carrito = 0;
+  let cacheProductos = [];   
+  let categoriaActiva = null;
 
-  async function cargarProductos() {
-    try {
-      const response = await fetch(url);
-      const productos = await response.json();
+  
+  function cardProductoHTML(producto) {
+    const precioNormal = `<span class="fw-bold">$${parseFloat(producto.Precio).toFixed(2)}</span>`;
+    const precioOferta = (producto.EnOferta && producto.PrecioOferta != null)
+      ? `
+        <span class="text-danger fw-bold">$${parseFloat(producto.PrecioOferta).toFixed(2)}</span><br>
+        <small class="text-muted text-decoration-line-through">$${parseFloat(producto.Precio).toFixed(2)}</small>
+      `
+      : precioNormal;
 
-      productos.forEach(producto => {
-        const col = document.createElement("div");
-        col.className = "col-sm-12 col-md-4 mb-4";
+    return `
+      <div class="card h-100" style="border: 2px solid #0A2A43;">
+        <img src="${producto.Imagen}" class="card-img-top img-fluid" style="height: 250px; object-fit: cover;" alt="${producto.Nombre}">
+        <div class="card-body d-flex flex-column">
+          <h6 class="card-title">${producto.Nombre}</h6>
+          <p class="card-text">${producto.Descripcion ?? ""}</p>
+          <p class="card-text">${precioOferta}</p>
+          <button class="btn btn-primary mt-auto agregarCarrito" style="background-color: #0A2A43; color: white;">Agregar al carrito</button>
+        </div>
+      </div>
+    `;
+  }
 
-        let precioHTML = "";
+  
+  function renderProductos(lista) {
+    contenedor.innerHTML = "";
+    if (!lista || lista.length === 0) {
+      contenedor.innerHTML = `<div class="col-12"><div class="alert alert-warning">No hay productos para esta categoría.</div></div>`;
+      return;
+    }
 
-        if (producto.EnOferta && producto.PrecioOferta != null) {
-          precioHTML = `
-            <span class="text-danger fw-bold">$${parseFloat(producto.PrecioOferta).toFixed(2)}</span><br>
-            <small class="text-muted text-decoration-line-through">$${parseFloat(producto.Precio).toFixed(2)}</small>
-          `;
-        } else {
-          precioHTML = `<span class="fw-bold">$${parseFloat(producto.Precio).toFixed(2)}</span>`;
-        }
+    lista.forEach(producto => {
+      const col = document.createElement("div");
+      col.className = "col-sm-12 col-md-4 mb-4";
+      col.innerHTML = cardProductoHTML(producto);
 
-        col.innerHTML = `
-          <div class="card h-100" style="border: 2px solid #0A2A43;">
-            <img src="${producto.Imagen}" class="card-img-top img-fluid" style="height: 250px; object-fit: cover;" alt="${producto.Nombre}">
-            <div class="card-body d-flex flex-column">
-              <h6 class="card-title">${producto.Nombre}</h6>
-              <p class="card-text">${producto.Descripcion}</p>
-              <p class="card-text">${precioHTML}</p>
-              <button class="btn btn-primary mt-auto agregarCarrito" style="background-color: #0A2A43; color: white;">Agregar al carrito</button>
-            </div>
-          </div>
-        `;
-
-        col.querySelector(".agregarCarrito").addEventListener("click", () => {
-          carrito++;
-          contadorCarrito.textContent = carrito;
-        });
-
-        contenedor.appendChild(col);
+      col.querySelector(".agregarCarrito").addEventListener("click", () => {
+        carrito++;
+        contadorCarrito.textContent = carrito;
       });
+
+      contenedor.appendChild(col);
+    });
+  }
+
+  
+  async function cargarProductos(idCategoria = null) {
+    try {
+      if (cacheProductos.length === 0) {
+        const response = await fetch(URL_PRODUCTOS);
+        cacheProductos = await response.json();
+      }
+
+      
+      const posiblesClaves = ["id_categoria", "categoria_id", "IdCategoria", "ID_Categoria", "CategoriaId"];
+
+      let filtrados = cacheProductos;
+
+      if (idCategoria !== null) {
+        filtrados = cacheProductos.filter(p => {
+          
+          for (const k of posiblesClaves) {
+            if (Object.prototype.hasOwnProperty.call(p, k)) {
+              
+              return String(p[k]) === String(idCategoria);
+            }
+          }
+          return false;
+        });
+      }
+
+      renderProductos(filtrados);
     } catch (error) {
       console.error("Error al cargar productos:", error);
-      contenedor.innerHTML = '<div class="alert alert-danger">No se pudieron cargar los productos.</div>';
+      contenedor.innerHTML = '<div class="col-12"><div class="alert alert-danger">No se pudieron cargar los productos.</div></div>';
     }
   }
 
-  cargarProductos();
+  
+  async function cargarCategorias() {
+    try {
+      const response = await fetch(URL_CATEGORIAS);
+      const categorias = await response.json();
+
+      listaCategorias.innerHTML = "";
+
+      
+      const liTodos = document.createElement("li");
+      liTodos.className = "mb-2";
+      liTodos.innerHTML = `
+        <a href="#" data-id="" class="text-decoration-none d-inline-flex align-items-center">
+          <i class="bi bi-bag me-2"></i> Todas
+        </a>`;
+      listaCategorias.appendChild(liTodos);
+
+      categorias.forEach(categoria => {
+        const li = document.createElement("li");
+        li.className = "mb-2";
+        li.innerHTML = `
+          <a href="#" data-id="${categoria.id_categoria}" class="text-decoration-none d-inline-flex align-items-center">
+            <i class="bi bi-bag me-2"></i> ${categoria.descripcion}
+          </a>
+        `;
+        listaCategorias.appendChild(li);
+      });
+
+      
+      listaCategorias.addEventListener("click", (e) => {
+        const a = e.target.closest("a[data-id]");
+        if (!a) return;
+        e.preventDefault();
+
+        
+        [...listaCategorias.querySelectorAll("a")].forEach(x => x.classList.remove("fw-bold"));
+        a.classList.add("fw-bold");
+
+        const id = a.getAttribute("data-id");
+        categoriaActiva = id || null;
+        cargarProductos(categoriaActiva);
+      });
+
+    } catch (error) {
+      console.error("Error al cargar categorías:", error);
+      listaCategorias.innerHTML = `<li class="text-danger">No se pudieron cargar las categorías.</li>`;
+    }
+  }
+
+  
+  function leerCategoriaDeURL() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id_categoria");
+    if (id) categoriaActiva = id;
+  }
+
+  
+  (async function init() {
+    leerCategoriaDeURL();
+    await cargarCategorias();
+    await cargarProductos(categoriaActiva);
+  })();
 </script>
+
 
 </body>
 </html>
